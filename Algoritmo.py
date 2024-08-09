@@ -3,6 +3,11 @@ import neurokit2 as nk
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from sklearn.naive_bayes import GaussianNB
+from sklearn.model_selection import cross_val_score
+
+
+#1 PROCESAMIENTO DE LOS DATOS DEL ECG
 
 # Descargar un registro específico desde PhysioNet
 # wfdb.dl_database('mitdb', dl_dir='mit-bih-arrhythmia-database')
@@ -40,6 +45,7 @@ hrv_metrics = nk.hrv_time(rpeaks, sampling_rate=sampling_rate)
 rmssd = hrv_metrics['HRV_RMSSD'].values[0]  # Obtener el valor de RMSSD
 
 # Graficar la señal original y las características extraídas
+'''
 plt.figure(figsize=(12, 6))
 plt.subplot(211)
 plt.plot(signals['ECG_Clean'][:3000])  # Graficar solo los primeros 3000 puntos
@@ -56,3 +62,40 @@ plt.ylabel("Duración (ms)")
 plt.legend()
 plt.tight_layout()
 plt.show()
+'''
+
+
+
+#2 CLASIFICACIÓN DE LOS DATOS DEL ECG
+
+#Algoritmo genetico
+
+from sklearn.naive_bayes import GaussianNB
+from sklearn.model_selection import cross_val_score
+
+def calcular_aptitud_nb(individuo, X, y, alpha=0.01):
+    # Seleccionar características basadas en el individuo
+    X_seleccionado = X[:, individuo == 1]
+    
+    # Penalización fuerte si no se seleccionan características
+    if X_seleccionado.shape[1] == 0:
+        return 0
+    
+    # Entrenar Naive Bayes
+    clasificador = GaussianNB()
+    scores = cross_val_score(clasificador, X_seleccionado, y, cv=5)
+    
+    # Calcular precisión media
+    accuracy = scores.mean()
+    
+    # Penalización por número de características
+    penalizacion = alpha * (individuo.sum() / len(individuo))
+    
+    # Calcular aptitud final
+    aptitud = accuracy - penalizacion
+    
+    return aptitud
+
+
+
+
