@@ -10,9 +10,11 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 from imblearn.over_sampling import SMOTE
 import seaborn as sns
 from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
+from collections import Counter
 
 # Definición de los registros y mapeo de clases
-registros = ['100', '101', '102', '103']  # Añadir más registros aquí
+registros = ['100', '101']  # Añadir más registros aquí
 X_total = []
 y_total = []
 mapeo_clases = {
@@ -23,6 +25,7 @@ mapeo_clases = {
 
 for registro in registros:
     # Lectura de los registros y anotaciones
+    print(f"Procesando registro {registro}...")
     record = wfdb.rdrecord(f'mit-bih-arrhythmia-database/{registro}')
     annotation = wfdb.rdann(f'mit-bih-arrhythmia-database/{registro}', 'atr')
     ecg_signal = record.p_signal[:, 0]  # Seleccionar el primer canal
@@ -79,59 +82,69 @@ for registro in registros:
     y = np.array([mapeo_clases[s] for s in simbolos if s in mapeo_clases])
 
     # Asegurarse de que las longitudes de X y y coinciden
-    if len(X) == len(y):
-        y_total.append(y)
+    min_len = min(len(X), len(y))
+    if min_len > 0:
+        X_total.append(X[:min_len])
+        y_total.append(y[:min_len])
     else:
         print(f"Longitud desalineada en el registro {registro}")
 
 # Combinar todos los datos
-X = np.array(X_total)
-y = np.hstack(y_total)
-min_len = min(len(X), len(y))
+if X_total and y_total:  # Verificar si las listas no están vacías
+    X = np.array(X_total)
+    y = np.hstack(y_total)
 
-if min_len > 0:
-    X = X[:min_len]
-    y = y[:min_len]
-else:
-    print("No hay datos suficientes para alinear X y y.")
+    min_len = min(len(X), len(y))
+    if min_len > 0:
+        X = X[:min_len]
+        y = y[:min_len]
+    else:
+        print("No hay datos suficientes para alinear X y y.")
     
-print(f"Longitud de X: {len(X)}")
-print(f"Longitud de y: {len(y)}")
+    print(f"Longitud de X: {len(X)}")
+    print(f"Longitud de y: {len(y)}")
 
-# Comprobar si hay suficientes datos para proceder
-if len(X) > 1 and len(y) > 1:
     # Escalado de características
     scaler = StandardScaler()
     X_normalized = scaler.fit_transform(X)
+    # Imputar los valores NaN en X con la media de cada columna
+    imputer = SimpleImputer(strategy='mean')
+    X_imputed = imputer.fit_transform(X_normalized)
+    # Verificar las clases en y
+    unique_classes, counts = np.unique(y, return_counts=True)
+    print(f"Clases en y: {unique_classes}, con conteos: {counts}")
     
-    # División en conjunto de entrenamiento y prueba
-    smote = SMOTE(random_state=42, k_neighbors=3)
-    X_resampled, y_resampled = smote.fit_resample(X_normalized, y)
-    X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.3, random_state=42)
-
-    # Entrenamiento del modelo
-    clasificador = GaussianNB()
-    clasificador.fit(X_train, y_train)
-    y_pred = clasificador.predict(X_test)
-
-    # Calcular la precisión del modelo
-    precision = accuracy_score(y_test, y_pred)
-    print(f"Precisión: {precision:.2f}")
-    unique_classes = np.unique(y_test)
-    print(f"Clases en y_test: {unique_classes}")
-
-    # Reporte de clasificación y matriz de confusión
-    reporte = classification_report(y_test, y_pred, target_names=['Normal', 'PVC'])
-    print("Reporte de Clasificación:\n", reporte)
-    matriz_confusion = confusion_matrix(y_test, y_pred)
-    print("Matriz de Confusión:\n", matriz_confusion)
-
-    # Graficar la matriz de confusión
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(matriz_confusion, annot=True, fmt="d", cmap="Blues", xticklabels=['Normal', 'PVC'], yticklabels=['Normal', 'PVC'])
-    plt.xlabel("Predicted")
-    plt.ylabel("True")
-    plt.title("Matriz de Confusión")
-    plt.show()
-else:
-    print("No hay suficientes datos para dividir en conjuntos de entrenamiento y prueba.")
+    # Comprobar si hay más de una clase en y
+    if len(unique_classes) > 1:
+        # Aplicar SMOTE si hay más de una clase
+        smote = SMOTE(random_state=42, k_neighbors=3)
+        X_resampled, y_resampled = smote.fit_resample(X_imputed, y)
+        X_train, X_test, y_train, y_test = train_test_split(X_resampled, y_resampled, test_size=0.3, random_state=42)
+    
+        # Entrenar el modelo
+        clasificador = GaussianNB()
+        clasificador.fit(X_train, y_train)
+        y_pred = clasificador.predict(X_test)
+    
+        # Calcular la precisión del modelo
+        precision = accuracy_score(y_test, y_pred)
+        print(f"Precisión: {precision:.2f}")
+        unique_classes = np.unique(y_test)
+        print(f"Clases en y_test: {unique_classes}")
+    
+        # Reporte de clasificación y matriz de confusión
+        reporte = classification_report(y_test, y_pred, target_names=['Normal', 'PVC'])
+        print("Reporte de Clasificación:\n", reporte)
+        matriz_confusion = confusion_matrix(y_test, y_pred)
+        print("Matriz de Confusión:\n", matriz_confusion)
+    
+        # Graficar la matriz de confusión
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(matriz_confusion, annot=True, fmt="d", cmap="Blues", xticklabels=['Normal', 'PVC'], yticklabels=['Normal', 'PVC'])
+        plt.xlabel("Predicted")
+        plt.ylabel("True")
+        plt.title("Matriz de Confusión")
+        plt.show()
+    else:
+        print("No hay suficientes clases en y para aplicar SMOTE.")
+    

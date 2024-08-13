@@ -10,90 +10,75 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 from imblearn.over_sampling import SMOTE
 import seaborn as sns
 from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
+from collections import Counter
 
-# Inicializar listas para almacenar los datos
+
+# Por ejemplo, puedes procesar varios registros y combinarlos
+registros = ['100', '101']  # Añadir más registros aquí
 X_total = []
 y_total = []
+mapeo_clases = {
+    'N': 0,  # Latido normal
+    'V': 1,  # PVC
+    # Añadir otros símbolos que te interesen
+}
+for registro in registros:
+    print(f"Procesando registro {registro}...")
+    record = wfdb.rdrecord(f'mit-bih-arrhythmia-database/{registro}')
+    annotation = wfdb.rdann(f'mit-bih-arrhythmia-database/{registro}', 'atr')
+    ecg_signal = record.p_signal[:, 0]  # Seleccionar el primer canal
+    sampling_rate = record.fs
 
-# Supongamos que estas variables ya están definidas en el código anterior
-# rr_intervals, rmssd, sdnn, pnn50, ecg_clean_mean, ecg_clean_std, delineation, ecg_signal, sampling_rate, annotation, mapeo_clases
+    signals, info = nk.ecg_process(ecg_signal, sampling_rate=sampling_rate)
+    rpeaks = info["ECG_R_Peaks"]
 
-# Inicializar variables con valores por defecto
-p_wave_duration = np.nan
-qrs_duration = np.nan
-t_wave_amplitude = np.nan
-qrs_amplitude = np.nan
+    rr_intervals = np.diff(rpeaks) / sampling_rate * 1000
+    hrv_metrics = nk.hrv_time(rpeaks, sampling_rate=sampling_rate)
+    rmssd = hrv_metrics['HRV_RMSSD'].values[0]
 
-# Verificar la existencia de las columnas y calcular las características
-if 'ECG_P_Offset' in delineation.columns and 'ECG_P_Onset' in delineation.columns:
-    p_wave_duration = np.mean(delineation['ECG_P_Offset'] - delineation['ECG_P_Onset'])
-    print(f"Duración de la onda P: {p_wave_duration:.2f}")
-else:
-    print("Las columnas 'ECG_P_Offset' y/o 'ECG_P_Onset' no existen en el DataFrame.")
+    # Extraer las características y anotaciones
+    X = np.column_stack((
+        rr_intervals,
+        np.full(len(rr_intervals), rmssd),
+        np.full(len(rr_intervals), signals['ECG_Clean'].mean()),
+        np.full(len(rr_intervals), signals['ECG_Clean'].std())
+    ))
 
-if 'ECG_R_Offset' in delineation.columns and 'ECG_Q_Onset' in delineation.columns:
-    qrs_duration = np.mean(delineation['ECG_R_Offset'] - delineation['ECG_Q_Onset'])
-    print(f"Duración del QRS: {qrs_duration:.2f}")
-else:
-    print("Las columnas 'ECG_R_Offset' y/o 'ECG_Q_Onset' no existen en el DataFrame.")
+    simbolos = annotation.symbol
+    y = np.array([mapeo_clases[s] for s in simbolos if s in mapeo_clases])
 
-if 'ECG_T_Peak' in delineation.columns:
-    t_wave_amplitude = np.mean(ecg_signal[delineation['ECG_T_Peak']])
-    print(f"Amplitud de la onda T: {t_wave_amplitude:.2f}")
-else:
-    print("La columna 'ECG_T_Peak' no existe en el DataFrame.")
-
-if 'ECG_R_Peak' in delineation.columns and 'ECG_Q_Peak' in delineation.columns:
-    qrs_amplitude = np.mean(ecg_signal[delineation['ECG_R_Peak']] - ecg_signal[delineation['ECG_Q_Peak']])
-    print(f"Amplitud del QRS: {qrs_amplitude:.2f}")
-else:
-    print("Las columnas 'ECG_R_Peak' y/o 'ECG_Q_Peak' no existen en el DataFrame.")
-
-# Análisis de frecuencias (Fourier)
-filtered_signal = nk.signal_filter(ecg_signal, sampling_rate=sampling_rate, lowcut=0.5, highcut=50)
-power_spectrum = nk.signal_power(filtered_signal, sampling_rate=sampling_rate, frequency_band=[0.5, 50])
-
-# Verificar si 'Frequency' y 'Power' están en el diccionario
-if 'Frequency' in power_spectrum and 'Power' in power_spectrum:
-    dominant_freq = power_spectrum['Frequency'][np.argmax(power_spectrum['Power'])]  # Frecuencia dominante
-else:
-    dominant_freq = np.nan
-    print("Las claves 'Frequency' y/o 'Power' no existen en el resultado de signal_power.")    
-
-# Vector de características
-X = np.array([rr_intervals.mean(), rmssd, sdnn, pnn50, ecg_clean_mean, ecg_clean_std, 
-              p_wave_duration, qrs_duration, t_wave_amplitude, qrs_amplitude, dominant_freq])
-
-# Escalado de características
-scaler = StandardScaler()
-X_normalized = scaler.fit_transform(X.reshape(1, -1)).flatten()
-
-# Extraer las etiquetas
-simbolos = annotation.symbol
-y = np.array([mapeo_clases[s] for s in simbolos if s in mapeo_clases])
-
-# Asegurarse de que las longitudes de X y y coinciden
-if len(X_normalized) == len(y):
-    X_total.append(X_normalized)
-    y_total.append(y)
-else:
-    print(f"Longitud desalineada en el registro {registro}")
+    # Alinea X e y y agrégalo a las listas totales
+    min_len = min(len(X), len(y))
+    X_total.append(X[:min_len])
+    y_total.append(y[:min_len])
 
 # Combinar todos los datos
-if X_total and y_total:  # Verificar que las listas no estén vacías
-    X = np.array(X_total)
-    y = np.hstack(y_total)
-    min_len = min(len(X), len(y))
-
-    if min_len > 0:
-        X = X[:min_len]
-        y = y[:min_len]
-    else:
-        print("No hay datos suficientes para alinear X y y.")
-else:
-    print("No se han añadido datos a X_total o y_total.")
-
-print(f"Longitud de X: {len(X)}")
-print(f"Longitud de y: {len(y)}")
+X = np.vstack(X_total)
+y = np.hstack(y_total)
 
 
+# División en conjunto de entrenamiento y prueba
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+clasificador = GaussianNB()
+clasificador.fit(X_train, y_train)
+y_pred = clasificador.predict(X_test)
+
+# Calcular la precisión del modelo
+precision = accuracy_score(y_test, y_pred)
+print(f"Precisión: {precision:.2f}")
+
+# Reporte de clasificación
+reporte = classification_report(y_test, y_pred, target_names=['Normal', 'PVC'])
+print("Reporte de Clasificación:\n", reporte)
+
+# Matriz de confusión
+matriz_confusion = confusion_matrix(y_test, y_pred)
+print("Matriz de Confusión:\n", matriz_confusion)
+
+plt.figure(figsize=(8, 6))
+sns.heatmap(matriz_confusion, annot=True, fmt="d", cmap="Blues", xticklabels=['Normal', 'PVC'], yticklabels=['Normal', 'PVC'])
+plt.xlabel("Predicted")
+plt.ylabel("True")
+plt.title("Matriz de Confusión")
+plt.show()
