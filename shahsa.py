@@ -13,16 +13,20 @@ from collections import Counter
 import matplotlib.pyplot as plt
 
 mapeo_clases = {
-    'N': 0,  # Normal
-    'V': 1,  # PVC
+    'N': 0,  # Latido normal
+    'L': 1,  # Bloqueo de rama izquierda
+    'R': 2,  # Bloqueo de rama derecha
+    'A': 3,  # Contracción auricular prematura
+    'V': 4,  # Contracción ventricular prematura (PVC)
+    'F': 5,  # Latido de fusión
+    'Q': 6,  # Latido QRS aberrante
+    'P': 7,  # Latido por marcapasos
     
 }
 
 def procesar_ecg(r, a):
     record = wfdb.rdrecord(r)
     anotation = wfdb.rdann(a, 'atr')
-    simbolos = anotation.symbol
-    labels = np.array([mapeo_clases[s] for s in simbolos if s in mapeo_clases])
     ecg_signal = record.p_signal[:, 0]  # Seleccionar el primer canal
 
     sampling_rate = record.fs
@@ -55,7 +59,7 @@ def procesar_ecg(r, a):
 
     return features, labels
 
-records = ['100', '101','102','103','104','105','106','107','108','109']
+records = ['100', '101','102','103','104','105']
 X_total, y_total = [], []
 for record in records:
     print(f"Procesando registro {record}...")
@@ -68,9 +72,15 @@ for record in records:
 X = np.vstack(X_total)
 y = np.hstack(y_total)
 
+print("Length of X:", len(X))
+print("Length of y:", len(y))
+
 min_len = min(len(X), len(y))
 X = X[:min_len]
-y = y[:min_len]
+y = y[:min_len] 
+
+print("Length of X:", len(X))
+print("Length of y:", len(y))
 
 smote=SMOTE()
 X_smote, y_smote = smote.fit_resample(X, y)
@@ -82,7 +92,7 @@ clasificador.fit(X_train, y_train)
 y_pred = clasificador.predict(X_test)
 
 print("Accuracy:", accuracy_score(y_test, y_pred))
-print("Classification Report:\n", classification_report(y_test, y_pred,target_names=['Normal', 'PVC']))
+print("Classification Report:\n", classification_report(y_test, y_pred))
 print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
 
 # Visualize confusion matrix
