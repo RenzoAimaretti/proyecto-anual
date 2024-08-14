@@ -13,14 +13,45 @@ from collections import Counter
 import matplotlib.pyplot as plt
 
 mapeo_clases = {
-    'N': 0,  # Grupo 0: Latidos normales
-    'L': 1,  # Grupo 1: Bloqueo de rama (izquierda y derecha)
-    'R': 1,
-    'A': 2,  # Grupo 2: Contracciones prematuras (auricular y ventricular)
-    'V': 2,
-    'F': 3,  # Grupo 3: Latidos de fusión
-    'Q': 4,  # Grupo 4: Latidos QRS aberrantes
-    'P': 4,  # Grupo 4: Latidos por marcapasos (englobado con QRS aberrante)
+    # Latidos normales
+    'N': 0,  # Latido normal
+
+    # Contracciones Prematuras (valor común: 1)
+    'V': 1,  # Contracción ventricular prematura (PVC)
+    'E': 1,  # Latido de escape ventricular
+    'F': 1,  # Latido de fusión (Fusion of ventricular and normal beat)
+    'J': 1,  # Latido de escape nodal (Nodal (junctional) escape beat)
+    'A': 1,  # Contracción auricular prematura (Atrial premature beat)
+    'a': 1,  # Contracción auricular aberrante (Aberrated atrial premature beat)
+    
+    # Latido de Fusión (valor común: 2)
+    '/': 2,  # Latido de fusión de latido normal y PVC (Fusion of paced and normal beat)
+    'f': 2,  # Latido de fusión de latido normal y latido aberrante (Fusion of paced and ventricular beat)
+    
+    # Contracciones Auriculares (valor común: 3)
+    'L': 3,  # Latido de escape del nodo SA (Left bundle branch block beat)
+    'R': 3,  # Latido de escape ventricular (Right bundle branch block beat)
+    'S': 3,  # Contracción supraventricular prematura (Supraventricular premature beat)
+    'P': 3,  # Latido por marcapasos (Paced beat)
+    
+    # Otros (valor común: 4)
+    'Q': 4,  # Latido QRS aberrante (Unclassifiable beat)
+    'e': 4,  # Latido de escape ventricular retardado (Ventricular escape beat)
+    '!': 4,  # Latido ectópico nodal (Ventricular flutter wave)
+    'I': 4,  # Latido idioventricular (Ventricular flutter wave)
+    'i': 4,  # Latido de escape idioventricular (Ventricular flutter wave)
+    '+': 4,  # Ritmo cambiante (Rhythm change)
+    '~': 4,  # Cambio en la frecuencia cardiaca (Signal quality change)
+    '|': 4,  # Comienzo de segmento de segmento (Isolated QRS-like artifact)
+    's': 4,  # Latido sistólico (Systole)
+    'T': 4,  # Latido ventricular no capturado (T-wave peak)
+    '*': 4,  # Artefacto (Systole)
+    'x': 4,  # Latido aberrante (Waveform onset)
+    '[': 4,  # Comienzo de una pausa (P-wave peak)
+    ']': 4,  # Fin de una pausa (Waveform end)
+    'p': 4,  # Potencial del marcapasos (Non-conducted pacer spike)
+    'B': 4,  # Bloqueo de rama (Left bundle branch block)
+    'b': 4,  # Bloqueo de rama incompleto (Right bundle branch block)
 }
 
 def procesar_ecg(r, a):
@@ -59,13 +90,24 @@ def procesar_ecg(r, a):
 
     return features, labels_agrupados
 
-records = ['100', '101','102','103','104','105','106','107','108','109','111','112','113','114','115','116','117','118','119','121','122','123','124','200','201','202','203','205','207','208','209','210','212','213','214','215','217','219','220','221','222','223','228','230','231','232','233','234']
+records = ['100', '101','102','103','104']
 X_total, y_total = [], []
 for record in records:
     print(f"Procesando registro {record}...")
     record_path = f'mit-bih-arrhythmia-database/{record}'
     annotation = f'mit-bih-arrhythmia-database/{record}'
     features, labels_agrupados = procesar_ecg(record_path, annotation)
+
+    print(f"features length: {len(features)}")
+    print(f"labels length: {len(labels_agrupados)}")
+
+    min_len = min(len(features), len(labels_agrupados))
+    features = features[:min_len]
+    labels_agrupados = labels_agrupados[:min_len]
+
+    print(f"features length: {len(features)}")
+    print(f"labels length: {len(labels_agrupados)}")
+
     X_total.append(features)
     y_total.append(labels_agrupados)
 
@@ -93,10 +135,10 @@ y_pred = clasificador.predict(X_test)
 
 reindex_mapeo = {
     0: 'Latido Normal',
-    1: 'Bloqueo de Rama',
-    2: 'Contracciones Prematuras',
-    3: 'Latido de Fusion',
-    4: 'Latido QRS Aberrante'
+    1: 'Contracciones Prematuras',
+    2: 'Latido de Fusión',
+    3: 'Contracciones Auriculares',
+    4: 'Otros'
     # Asegúrate de incluir todas las etiquetas posibles
 }
 # Proporcionar un valor predeterminado para las claves que faltan
@@ -118,17 +160,28 @@ y_pred_reindex: ['Latido QRS Aberrante' 'Latido QRS Aberrante' 'Latido QRS Aberr
 y_test_reindex = np.array([reindex_mapeo.get(label, default_value) for label in y_test])
 y_pred_reindex = np.array([reindex_mapeo.get(label, default_value) for label in y_pred])
 # Verificar las etiquetas reindexadas
-print("y_test_reindex:", y_test_reindex)
-print("y_pred_reindex:", y_pred_reindex)
+y_test_counts = Counter(y_test_reindex)
+y_pred_counts = Counter(y_pred_reindex)
+
+
+print("Counts in y_test:")
+for label, count in y_test_counts.items():
+    print(f"{label}: {count}")
+
+print("Counts in y_pred:")
+for label, count in y_pred_counts.items():
+    print(f"{label}: {count}")
+print("y_test_reindex:", y_test)
+print("y_pred_reindex:", y_pred)
 
 print("Accuracy:", accuracy_score(y_test, y_pred))
-print("Classification Report:\n", classification_report(y_test_reindex, y_pred_reindex, labels=list(reindex_mapeo.values()),zero_division=0))
-print("Confusion Matrix:\n", confusion_matrix(y_test_reindex, y_pred_reindex))
+print("Classification Report:\n", classification_report(y_test, y_pred,zero_division=0))
+print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
 
 # Visualize confusion matrix
-nombres_clases_agrupadas = ['Normal', 'Bloqueo de Rama', 'Prematura', 'Otros']
+nombres_clases_agrupadas = ['Normal', 'Prematuras','Fusion','Contraccion Auricular', 'Otros']
 
-cm = confusion_matrix(y_test_reindex, y_pred_reindex)
+cm = confusion_matrix(y_test, y_pred)
 sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=nombres_clases_agrupadas, yticklabels=nombres_clases_agrupadas)
 plt.xlabel("Predicted")
 plt.ylabel("True")

@@ -2,100 +2,227 @@ import wfdb
 import neurokit2 as nk
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.naive_bayes import GaussianNB
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-from imblearn.over_sampling import SMOTE
-import seaborn as sns
-from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import cross_val_score
+from sklearn.ensemble import RandomForestClassifier
+from deap import base, creator, tools, algorithms
 from sklearn.impute import SimpleImputer
 from collections import Counter
 import matplotlib.pyplot as plt
-
-# Define class mapping
+from sklearn.model_selection import train_test_split
+from sklearn.naive_bayes import GaussianNB
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from imblearn.over_sampling import SMOTE
+from sklearn.preprocessing import StandardScaler
 mapeo_clases = {
-    'N': 0,  # Normal
-    'V': 1,  # PVC
-    # Add other symbols of interest
+    # Latidos normales
+    'N': 0,  # Latido normal
+
+    # Contracciones Prematuras (valor común: 1)
+    'V': 1,  # Contracción ventricular prematura (PVC)
+    'E': 1,  # Latido de escape ventricular
+    'F': 1,  # Latido de fusión (Fusion of ventricular and normal beat)
+    'J': 1,  # Latido de escape nodal (Nodal (junctional) escape beat)
+    'A': 1,  # Contracción auricular prematura (Atrial premature beat)
+    'a': 1,  # Contracción auricular aberrante (Aberrated atrial premature beat)
+    
+    # Latido de Fusión (valor común: 2)
+    '/': 2,  # Latido de fusión de latido normal y PVC (Fusion of paced and normal beat)
+    'f': 2,  # Latido de fusión de latido normal y latido aberrante (Fusion of paced and ventricular beat)
+    
+    # Contracciones Auriculares (valor común: 3)
+    'L': 3,  # Latido de escape del nodo SA (Left bundle branch block beat)
+    'R': 3,  # Latido de escape ventricular (Right bundle branch block beat)
+    'S': 3,  # Contracción supraventricular prematura (Supraventricular premature beat)
+    'P': 3,  # Latido por marcapasos (Paced beat)
+    
+    # Otros (valor común: 4)
+    'Q': 4,  # Latido QRS aberrante (Unclassifiable beat)
+    'e': 4,  # Latido de escape ventricular retardado (Ventricular escape beat)
+    '!': 4,  # Latido ectópico nodal (Ventricular flutter wave)
+    'I': 4,  # Latido idioventricular (Ventricular flutter wave)
+    'i': 4,  # Latido de escape idioventricular (Ventricular flutter wave)
+    '+': 4,  # Ritmo cambiante (Rhythm change)
+    '~': 4,  # Cambio en la frecuencia cardiaca (Signal quality change)
+    '|': 4,  # Comienzo de segmento de segmento (Isolated QRS-like artifact)
+    's': 4,  # Latido sistólico (Systole)
+    'T': 4,  # Latido ventricular no capturado (T-wave peak)
+    '*': 4,  # Artefacto (Systole)
+    'x': 4,  # Latido aberrante (Waveform onset)
+    '[': 4,  # Comienzo de una pausa (P-wave peak)
+    ']': 4,  # Fin de una pausa (Waveform end)
+    'p': 4,  # Potencial del marcapasos (Non-conducted pacer spike)
+    'B': 4,  # Bloqueo de rama (Left bundle branch block)
+    'b': 4,  # Bloqueo de rama incompleto (Right bundle branch block)
 }
 
-# Function to process a single ECG record
-def process_ecg(record_path, annotation_path, sampling_rate):
-    record = wfdb.rdrecord(record_path)
-    ecg_signal = record.p_signal[:, 0]  # Select first channel
+def procesar_ecg(r, a):
+    record = wfdb.rdrecord(r)
+    anotation = wfdb.rdann(a, 'atr')
+    ecg_signal = record.p_signal[:, 0]  # Seleccionar el primer canal
 
-    signals, info = nk.ecg_process(ecg_signal, sampling_rate=sampling_rate)
+    sampling_rate = record.fs
+    signals, info = nk.ecg_process(ecg_signal, sampling_rate=record.fs)
     rpeaks = info["ECG_R_Peaks"]
 
     rr_intervals = np.diff(rpeaks) / sampling_rate * 1000
     hrv_metrics = nk.hrv_time(rpeaks, sampling_rate=sampling_rate)
+    rmssd = hrv_metrics['HRV_RMSSD'].values[0]
 
-    # Extract features directly into the array
+    # Extract features
     features = np.column_stack((
         rr_intervals,
-        hrv_metrics['HRV_RMSSD'].values,
+        np.full(len(rr_intervals), rmssd),
         np.full(len(rr_intervals), signals['ECG_Clean'].mean()),
         np.full(len(rr_intervals), signals['ECG_Clean'].std())
     ))
 
-    # Handle missing values (if any)
+    # Manejar valores faltantes (si los hay)
     imputer = SimpleImputer(strategy='mean')
     features = imputer.fit_transform(features)
 
-    # Standardize features
+    # Estandarizar características
     scaler = StandardScaler()
     features = scaler.fit_transform(features)
 
-    # Load annotations and map to class labels
-    annotation = wfdb.rdann(annotation_path, 'atr')
-    simbolos = annotation.symbol
-    labels = np.array([mapeo_clases[s] for s in simbolos if s in mapeo_clases])
+    # Cargar anotaciones y mapear a etiquetas de clase
+    simbolos = anotation.symbol
 
-    return features, labels
+    labels_agrupados = np.array([mapeo_clases[s] for s in simbolos if s in mapeo_clases])
 
-# Process multiple records (modify record list as needed)
-records = ['100', '101']  # Add more records
-X = []
-y = []
+    return features, labels_agrupados
+
+records = ['100', '101','102','103']
+X_total, y_total = [], []
 for record in records:
     print(f"Procesando registro {record}...")
     record_path = f'mit-bih-arrhythmia-database/{record}'
-    annotation = wfdb.rdann(f'mit-bih-arrhythmia-database/{registro}', 'atr')
-    features, labels = process_ecg(record_path, annotation_path, sampling_rate=360)  # Adjust sampling rate if needed
-    X.append(features)
-    y.append(labels)
+    annotation = f'mit-bih-arrhythmia-database/{record}'
+    features, labels_agrupados = procesar_ecg(record_path, annotation)
 
-# Combine all data (alternative method)
-X = np.vstack(X)
-y = np.hstack(y)
+    print(f"features length: {len(features)}")
+    print(f"labels length: {len(labels_agrupados)}")
 
-# Handle class imbalance (optional)
-smote = SMOTE()
-X, y = smote.fit_resample(X, y)
+    min_len = min(len(features), len(labels_agrupados))
+    features = features[:min_len]
+    labels_agrupados = labels_agrupados[:min_len]
 
-# Split into training and testing sets
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    print(f"features length: {len(features)}")
+    print(f"labels length: {len(labels_agrupados)}")
 
-# Create and train the model
-clf = GaussianNB()
-clf.fit(X_train, y_train)
+    X_total.append(features)
+    y_total.append(labels_agrupados)
 
-# Evaluate the model using cross-validation
-scores = cross_val_score(clf, X, y, cv=5)
-print("Cross-Validation Scores:", scores)
-print("Mean Accuracy:", scores.mean())
+X = np.vstack(X_total)
+y = np.hstack(y_total)
 
-# Make predictions on the test set
-y_pred = clf.predict(X_test)
+print("Length of X:", len(X))
+print("Length of y:", len(y))
 
-# Calculate accuracy, classification report, and confusion matrix
+min_len = min(len(X), len(y))
+X = X[:min_len]
+y = y[:min_len] 
+
+print("Length of X:", len(X))
+print("Length of y:", len(y))
+
+smote=SMOTE()
+X_smote, y_smote = smote.fit_resample(X, y)
+
+X_train, X_test, y_train, y_test = train_test_split(X_smote, y_smote, test_size=0.2, random_state=42)
+
+clasificador = GaussianNB()
+clasificador.fit(X_train, y_train)
+y_pred = clasificador.predict(X_test)
+
+reindex_mapeo = {
+    0: 'Latido Normal',
+    1: 'Contracciones Prematuras',
+    2: 'Latido de Fusión',
+    3: 'Contracciones Auriculares',
+    4: 'Otros'
+    # Asegúrate de incluir todas las etiquetas posibles
+}
+# Proporcionar un valor predeterminado para las claves que faltan
+default_value = 'Otro'
+
+
+y_test_reindex = np.array([reindex_mapeo.get(label, default_value) for label in y_test])
+y_pred_reindex = np.array([reindex_mapeo.get(label, default_value) for label in y_pred])
+# Verificar las etiquetas reindexadas
+y_test_counts = Counter(y_test_reindex)
+y_pred_counts = Counter(y_pred_reindex)
+
+
+print("Counts in y_test:")
+for label, count in y_test_counts.items():
+    print(f"{label}: {count}")
+
+print("Counts in y_pred:")
+for label, count in y_pred_counts.items():
+    print(f"{label}: {count}")
+print("y_test_reindex:", y_test)
+print("y_pred_reindex:", y_pred)
+
 print("Accuracy:", accuracy_score(y_test, y_pred))
-print("Classification Report:\n", classification_report(y_test, y_pred))
+print("Classification Report:\n", classification_report(y_test, y_pred,zero_division=0))
+print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
+accuracy1=accuracy_score(y_test, y_pred)
+# Visualize confusion matrix
+nombres_clases_agrupadas = ['Normal', 'Prematuras','Fusion','Contraccion Auricular', 'Otros']
+
+
+# Configurar el algoritmo genético
+
+
+def fitness(individual):
+    var_smoothing = 10**(-individual[0])
+    clasificador = GaussianNB(var_smoothing=var_smoothing)
+    clasificador.fit(X_train, y_train)
+    y_pred = clasificador.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    return accuracy,
+
+# Configurar el algoritmo genético
+creator.create("FitnessMax", base.Fitness, weights=(1.0,))
+creator.create("Individual", list, fitness=creator.FitnessMax)
+
+toolbox = base.Toolbox()
+toolbox.register("attr_float", np.random.uniform, 0, 9)  # Para var_smoothing en el rango [10^-9, 1]
+toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_float, n=1)
+toolbox.register("population", tools.initRepeat, list, toolbox.individual)
+
+toolbox.register("mate", tools.cxBlend, alpha=0.5)
+toolbox.register("mutate", tools.mutPolynomialBounded, low=0, up=9, eta=1.0, indpb=0.2)
+toolbox.register("select", tools.selTournament, tournsize=3)
+toolbox.register("evaluate", fitness)
+
+# Ejecutar el algoritmo genético
+population = toolbox.population(n=50)
+ngen = 40
+cxpb = 0.5
+mutpb = 0.2
+
+result, log = algorithms.eaSimple(population, toolbox, cxpb, mutpb, ngen, 
+                                  stats=None, halloffame=None, verbose=True)
+
+# Obtener el mejor individuo
+best_individual = tools.selBest(population, k=1)[0]
+var_smoothing = 10**(-best_individual[0])
+print(f"Mejor hiperparámetro: var_smoothing={var_smoothing}")
+
+# Entrenar el modelo con el mejor hiperparámetro
+clasificador = GaussianNB(var_smoothing=var_smoothing)
+clasificador.fit(X_train, y_train)
+
+# Evaluar el modelo
+y_pred = clasificador.predict(X_test)
+
+# Generar el reporte
+print("Accuracy:", accuracy_score(y_test, y_pred))
+print("Classification Report:\n", classification_report(y_test, y_pred, zero_division=0))
 print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
 
-# Visualize confusion matrix
-sns.heatmap(confusion_matrix(y_test, y_pred), annot=True, fmt="d", cmap="Blues")
-plt.xlabel("Predicted")
-plt.ylabel("True")
-plt.title("Confusion Matrix")
-plt.show()
+accuracy2=accuracy_score(y_test, y_pred)
+
+if accuracy2>accuracy1:
+    print(f'MEJORO EL RENDIMIENDO EN {(accuracy2-accuracy1)*100}%')
