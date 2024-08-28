@@ -90,7 +90,7 @@ def procesar_ecg(r, a):
 
     return features, labels_agrupados
 
-records = ['100', '101','102','103','104']
+records = ['100', '101','102','103','104','105','106','107','108','109']
 X_total, y_total = [], []
 for record in records:
     print(f"Procesando registro {record}...")
