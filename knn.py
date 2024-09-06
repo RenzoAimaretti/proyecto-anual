@@ -83,7 +83,7 @@ def procesar_ecg(r, a):
     return features, labels_agrupados
 
 # Procesar los registros
-records = ['100', '101', '102']
+records = ['100', '101', '102', '103', '104', '105', '106', '107', '108', '109', '111', '112', '113', '114', '115', '116', '117', '118', '119', '121', '122', '123', '124', '200', '201', '202', '203', '205', '207', '208', '209', '210', '212', '213', '214', '215', '217', '219', '220', '221', '222', '223', '228', '230', '231', '232', '233', '234']
 X_total, y_total = [], []
 for record in records:
     print(f"Procesando registro {record}...")
@@ -117,12 +117,9 @@ y = y[:min_len]
 print("Length of X:", len(X))
 print("Length of y:", len(y))
 
-# Aplicar SMOTE para manejar desbalanceo de clases
-smote = SMOTE()
-X_smote, y_smote = smote.fit_resample(X, y)
 
 # Dividir el conjunto de datos en entrenamiento y prueba
-X_train, X_test, y_train, y_test = train_test_split(X_smote, y_smote, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 # Configurar el clasificador k-NN
 k = 5  # Número de vecinos
@@ -165,14 +162,14 @@ accuracy1=accuracy_score(y_test, y_pred)
 
 conf_matrix = confusion_matrix(y_test, y_pred)
 plt.figure(figsize=(10,7))
-sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues',
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Greys',
             xticklabels=list(reindex_mapeo.values()), yticklabels=list(reindex_mapeo.values()))
 plt.xlabel('Predicted Labels')
 plt.ylabel('True Labels')
 plt.title('Confusion Matrix')
 plt.show()
 
-# Configurar y ejecutar el algoritmo genético (si deseas ajustar hiperparámetros del k-NN)
+# Configurar y ejecutar el algoritmo genético
 def fitness(individual):
     k = int(individual[0])
     k = max(1, min(k, 20))  # Asegurar que k esté en el rango [1, 20]
@@ -227,7 +224,7 @@ accuracy2 = accuracy_score(y_test, y_pred)
 
 conf_matrix = confusion_matrix(y_test, y_pred)
 plt.figure(figsize=(10,7))
-sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues',
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Greys',
             xticklabels=list(reindex_mapeo.values()), yticklabels=list(reindex_mapeo.values()))
 plt.xlabel('Predicted Labels')
 plt.ylabel('True Labels')

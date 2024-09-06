@@ -1,4 +1,3 @@
-import multiprocessing
 import wfdb
 import neurokit2 as nk
 import numpy as np
@@ -56,7 +55,7 @@ def procesar_ecg(r, a):
     return features, labels_agrupados
 
 # Procesar registros
-records = ['100', '101', '102', '103', '104', '105', '106', '107', '108', '109', '111', '112', '113', '114', '115', '116', '117', '118', '119', '121', '122', '123', '124', '200', '201', '202', '203', '205', '207', '208', '209', '210', '212', '213', '214', '215', '217', '219', '220', '221', '222', '223', '228', '230', '231', '232', '233', '234']
+records = ['100', '101', '102']
 X_total, y_total = [], []
 for record in records:
     print(f"Procesando registro {record}...")
@@ -78,30 +77,18 @@ min_len = min(len(X), len(y))
 X = X[:min_len]
 y = y[:min_len]
 
+# Balancear el conjunto de datos
+smote = SMOTE(sampling_strategy='not majority',k_neighbors=7)
+X_smote, y_smote = smote.fit_resample(X, y)
 
 # Dividir datos en entrenamiento y prueba
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-# Contar elementos de cada clase en y_train
-unique_train, counts_train = np.unique(y_train, return_counts=True)
-print("Elementos de cada clase en y_train:")
-for label, count in zip(unique_train, counts_train):
-    print(f"Clase {label}: {count} elementos")
+X_train, X_test, y_train, y_test = train_test_split(X_smote, y_smote, test_size=0.2, random_state=42)
 
-# Contar elementos de cada clase en y_test
-unique_test, counts_test = np.unique(y_test, return_counts=True)
-print("Elementos de cada clase en y_test:")
-for label, count in zip(unique_test, counts_test):
-    print(f"Clase {label}: {count} elementos")
 # Entrenar y evaluar el clasificador base
 clasificador = GaussianNB()
 clasificador.fit(X_train, y_train)
-print(clasificador.classes_)
-print(clasificador.class_prior_)
 y_pred = clasificador.predict(X_test)
-unique_test, counts_test = np.unique(y_pred, return_counts=True)
-print("Elementos de cada clase en y_pred:")
-for label, count in zip(unique_test, counts_test):
-    print(f"Clase {label}: {count} elementos")
+
 # Mapeo para reporte
 reindex_mapeo = {
     0: 'Latido Normal',
@@ -123,56 +110,113 @@ accuracy1=accuracy_score(y_test, y_pred)
 # Visualizar matriz de confusión
 conf_matrix = confusion_matrix(y_test, y_pred)
 plt.figure(figsize=(10,7))
-sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Greys',
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues',
             xticklabels=list(reindex_mapeo.values()), yticklabels=list(reindex_mapeo.values()))
 plt.xlabel('Predicted Labels')
 plt.ylabel('True Labels')
 plt.title('Confusion Matrix')
 plt.show()
 
-# Configurar el algoritmo genético
-def fitness(individual):
-    var_smoothing = 10**(-individual[0])
-    clasificador = GaussianNB(var_smoothing=var_smoothing)
-    clasificador.fit(X_train, y_train)
-    y_pred = clasificador.predict(X_test)
-    accuracy = accuracy_score(y_test, y_pred)
-    return accuracy,
-
+# Crear el tipo de individuo
 creator.create("FitnessMax", base.Fitness, weights=(1.0,))
 creator.create("Individual", list, fitness=creator.FitnessMax)
 
+# Definir la función de evaluación (fitness) para GaussianNB
+def fitness(individual):
+    var_smoothing = 10 ** individual[0]  # Convertir de logaritmo a valor original
+    clf = GaussianNB(var_smoothing=var_smoothing)
+    scores = cross_val_score(clf, X, y, cv=5)  # Supone que X e y están definidos
+    return np.mean(scores),
+
+# Configuración de DEAP
 toolbox = base.Toolbox()
-toolbox.register("attr_float", np.random.uniform, 0, 9)
+toolbox.register("attr_float", np.random.uniform, -9, -1)  # Logaritmo de var_smoothing entre 10^-9 y 10^-1
 toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_float, n=1)
 toolbox.register("population", tools.initRepeat, list, toolbox.individual)
 toolbox.register("mate", tools.cxBlend, alpha=0.5)
-toolbox.register("mutate", tools.mutPolynomialBounded, low=0, up=9, eta=1.0, indpb=0.2)
+
+# Mutación Logarítmica
+def mut_logarithmic(individual):
+    individual[0] += np.random.uniform(-1, 1) * 0.5
+    return individual,
+
+# Mutación Gaussiana
+def mut_gaussian(individual, mu=0, sigma=0.3):
+    individual[0] += np.random.normal(mu, sigma)
+    return individual,
+
+# Mutación Polinomial Acotada
+def mut_polynomial_bounded(individual, low=-9, up=-1, eta=1.0):
+    delta_1 = (individual[0] - low) / (up - low)
+    delta_2 = (up - individual[0]) / (up - low)
+    rand = np.random.random()
+    mut_pow = 1.0 / (eta + 1.0)
+
+    if rand <= 0.5:
+        xy = 1.0 - delta_1
+        val = 2.0 * rand + (1.0 - 2.0 * rand) * (xy ** (eta + 1.0))
+        delta_q = (val ** mut_pow) - 1.0
+    else:
+        xy = 1.0 - delta_2
+        val = 2.0 * (1.0 - rand) + 2.0 * (rand - 0.5) * (xy ** (eta + 1.0))
+        delta_q = 1.0 - (val ** mut_pow)
+
+    individual[0] += delta_q * (up - low)
+    return individual,
+
+# Registrar las mutaciones en el toolbox
+toolbox.register("mutate_log", mut_logarithmic)
+toolbox.register("mutate_gauss", mut_gaussian, mu=0, sigma=0.3)
+toolbox.register("mutate_poly", mut_polynomial_bounded, low=-9, up=-1, eta=1.0)
+
+# Selección y evaluación
 toolbox.register("select", tools.selTournament, tournsize=3)
 toolbox.register("evaluate", fitness)
 
+# Ejemplo de ejecución del algoritmo genético
+population = toolbox.population(n=100)
 
+# Proceso evolutivo
+NGEN = 40
+for gen in range(NGEN):
+    offspring = toolbox.select(population, len(population))
+    offspring = list(map(toolbox.clone, offspring))
 
-# Ejecutar el algoritmo genético
-population = toolbox.population(n=50)
-ngen = 40
-cxpb = 0.5
-mutpb = 0.2
+    # Aplicar la mutación logarítmica en la primera fase
+    if gen < NGEN // 3:
+        for mutant in offspring:
+            if np.random.random() < 0.2:
+                toolbox.mutate_log(mutant)
+                del mutant.fitness.values
 
-result, log = algorithms.eaSimple(population, toolbox, cxpb, mutpb, ngen, 
-                                  stats=None, halloffame=None, verbose=True)
+    # Aplicar la mutación gaussiana en la segunda fase
+    elif gen < 2 * NGEN // 3:
+        for mutant in offspring:
+            if np.random.random() < 0.2:
+                toolbox.mutate_gauss(mutant)
+                del mutant.fitness.values
 
+    # Aplicar la mutación polinomial acotada en la fase final
+    else:
+        for mutant in offspring:
+            if np.random.random() < 0.2:
+                toolbox.mutate_poly(mutant)
+                del mutant.fitness.values
 
+    # Evaluar los nuevos individuos
+    invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
+    fitnesses = map(toolbox.evaluate, invalid_ind)
+    for ind, fit in zip(invalid_ind, fitnesses):
+        ind.fitness.values = fit
 
-# Obtener el mejor individuo y evaluar el modelo
-best_individual = tools.selBest(population, k=1)[0]
-var_smoothing = 10**(-best_individual[0])
-print(f"Mejor hiperparámetro: var_smoothing={var_smoothing}")
+    population[:] = offspring
 
-clasificador = GaussianNB(var_smoothing=var_smoothing)
+# Mejor individuo encontrado
+best_ind = tools.selBest(population, 1)[0]
+print(f"Mejor individuo: {best_ind[0]}, con fitness: {best_ind.fitness.values[0]}")
+
+clasificador = GaussianNB(var_smoothing=best_ind[0])
 clasificador.fit(X_train, y_train)
-print(clasificador.classes_)
-print(clasificador.class_prior_)
 y_pred = clasificador.predict(X_test)
 
 print("Accuracy:", accuracy_score(y_test, y_pred))
@@ -182,7 +226,7 @@ print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
 accuracy2 = accuracy_score(y_test, y_pred)
 conf_matrix = confusion_matrix(y_test, y_pred)
 plt.figure(figsize=(10,7))
-sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Greys',
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues',
             xticklabels=list(reindex_mapeo.values()), yticklabels=list(reindex_mapeo.values()))
 plt.xlabel('Predicted Labels')
 plt.ylabel('True Labels')
