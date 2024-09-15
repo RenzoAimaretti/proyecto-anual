@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 from imblearn.over_sampling import SMOTE
 from sklearn.preprocessing import StandardScaler
 import seaborn as sns
-from multiprocessing import Pool
+
 
 # Mapeo de clases
 mapeo_clases = {
@@ -49,13 +49,17 @@ mapeo_clases = {
     'b': 4,  # Bloqueo de rama incompleto (Right bundle branch block)
 }
 
-def procesar_ecg(r, a):
-    record = wfdb.rdrecord(r)
-    annotation = wfdb.rdann(a, 'atr')
-    ecg_signal = record.p_signal[:, 0]  # Seleccionar el primer canal
+# Definir función para procesar cada registro ECG
+def procesar_ecg(record):
+    record_path = f'mit-bih-arrhythmia-database/{record}'
+    annotation_path = f'mit-bih-arrhythmia-database/{record}'
+
+    record = wfdb.rdrecord(record_path)
+    annotation = wfdb.rdann(annotation_path, 'atr')
+    ecg_signal = record.p_signal[:, 0]
 
     sampling_rate = record.fs
-    signals, info = nk.ecg_process(ecg_signal, sampling_rate=record.fs)
+    signals, info = nk.ecg_process(ecg_signal, sampling_rate=sampling_rate)
     rpeaks = info["ECG_R_Peaks"]
 
     rr_intervals = np.diff(rpeaks) / sampling_rate * 1000
@@ -70,11 +74,9 @@ def procesar_ecg(r, a):
         np.full(len(rr_intervals), signals['ECG_Clean'].std())
     ))
 
-    # Manejar valores faltantes
+    # Manejar valores faltantes y estandarizar
     imputer = SimpleImputer(strategy='mean')
     features = imputer.fit_transform(features)
-
-    # Estandarizar características
     scaler = StandardScaler()
     features = scaler.fit_transform(features)
 
@@ -84,37 +86,43 @@ def procesar_ecg(r, a):
 
     return features, labels_agrupados
 
-# Función para procesar cada registro en paralelo
-def procesar_registro_parallel(record):
+# Definir la función para el multiprocesamiento
+def procesar_registro(record):
     print(f"Procesando registro {record}...")
-    record_path = f'mit-bih-arrhythmia-database/{record}'
-    annotation = f'mit-bih-arrhythmia-database/{record}'
-    features, labels_agrupados = procesar_ecg(record_path, annotation)
-
+    features, labels_agrupados = procesar_ecg(record)
+    
+    # Ajustar longitudes
     min_len = min(len(features), len(labels_agrupados))
     features = features[:min_len]
     labels_agrupados = labels_agrupados[:min_len]
-
+    
     return features, labels_agrupados
 
-# Procesar registros en paralelo
-if __name__ == '__main__':
-    records = ['100', '101', '102', '103', '104', '105', '106', '107', '108', '109', '111', '112', '113', '114', '115', '116', '117', '118', '119', '121', '122', '123', '124', '200', '201', '202', '203', '205', '207', '208', '209', '210', '212', '213', '214', '215', '217', '219', '220', '221', '222', '223', '228', '230', '231', '232', '233', '234']
-    num_processes = multiprocessing.cpu_count()//2
-    with Pool(processes=num_processes) as pool:
-        results = pool.map(procesar_registro_parallel, records)
+# Listado de registros
+records = ['100', '101', '102', '103', '104', '105', '106', '107', '108', '109', '111', '112', '113', '114', '115', '116', 
+           '117', '118', '119', '121', '122', '123', '124', '200', '201', '202', '203', '205', '207', '208', '209', '210',
+           '212', '213', '214', '215', '217', '219', '220', '221', '222', '223', '228', '230', '231', '232', '233', '234']
 
-    # Combinar los resultados
+# Multiprocesamiento
+if __name__ == '__main__':
+    with multiprocessing.Pool(processes=(multiprocessing.cpu_count())//2) as pool:
+        results = pool.map(procesar_registro, records)
+
+    # Separar las características y etiquetas
     X_total, y_total = zip(*results)
+
+    # Verificar que todas las longitudes coincidan
+    min_len = min([len(x) for x in X_total])
+
+    # Recortar para asegurar que los arrays tienen la misma longitud
+    X_total = [x[:min_len] for x in X_total]
+    y_total = [y[:min_len] for y in y_total]
+
+    # Concatenar listas de arrays en matrices unificadas
     X = np.vstack(X_total)
     y = np.hstack(y_total)
 
-    print("Length of X:", len(X))
-    print("Length of y:", len(y))
-
-    min_len = min(len(X), len(y))
-    X = X[:min_len]
-    y = y[:min_len] 
+    print(f"Total de muestras procesadas: {len(X_total)}")
 
     # Dividir el conjunto de datos en entrenamiento y prueba
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -138,20 +146,7 @@ if __name__ == '__main__':
     y_test_reindex = np.array([reindex_mapeo.get(label, default_value) for label in y_test])
     y_pred_reindex = np.array([reindex_mapeo.get(label, default_value) for label in y_pred])
 
-    # Verificar las etiquetas reindexadas
-    y_test_counts = Counter(y_test_reindex)
-    y_pred_counts = Counter(y_pred_reindex)
-
-    print("Counts in y_test:")
-    for label, count in y_test_counts.items():
-        print(f"{label}: {count}")
-
-    print("Counts in y_pred:")
-    for label, count in y_pred_counts.items():
-        print(f"{label}: {count}")
-
-    print("y_test_reindex:", y_test)
-    print("y_pred_reindex:", y_pred)
+   
 
     print("Accuracy:", accuracy_score(y_test, y_pred))
     print("Classification Report:\n", classification_report(y_test, y_pred, zero_division=0))
@@ -205,7 +200,7 @@ if __name__ == '__main__':
 
     # Ejecutar el algoritmo genético
     population = toolbox.population(n=50)
-    ngen = 40
+    ngen = 5
     cxpb = 0.5
     mutpb = 0.2
 
