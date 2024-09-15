@@ -3,7 +3,7 @@ import pandas as pd
 import neurokit2 as nk
 import numpy as np
 # Ruta al archivo .atr sin la extensión
-file_base = 'mit-bih-arrhythmia-database/106'
+file_base = 'mit-bih-arrhythmia-database/103'
 
 # Leer el archivo .atr
 record = wfdb.rdrecord(file_base)

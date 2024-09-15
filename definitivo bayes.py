@@ -1,15 +1,13 @@
 import wfdb
 import neurokit2 as nk
 import numpy as np
-from sklearn.model_selection import cross_val_score, train_test_split
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 from deap import base, creator, tools, algorithms
 from sklearn.impute import SimpleImputer
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.naive_bayes import GaussianNB
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-from imblearn.over_sampling import SMOTE
 from sklearn.preprocessing import StandardScaler
 
 # Mapeo de clases
@@ -55,7 +53,7 @@ def procesar_ecg(r, a):
     return features, labels_agrupados
 
 # Procesar registros
-records = ['100', '101', '102', '103','104','105','106','107','108']
+records = ['100', '101', '102', '103', '104', '105', '106', '107', '108', '109', '111', '112', '113', '114', '115', '116', '117', '118', '119', '121', '122', '123', '124', '200', '201', '202', '203', '205', '207', '208', '209', '210', '212', '213', '214', '215', '217', '219', '220', '221', '222', '223', '228', '230', '231', '232', '233', '234']
 X_total, y_total = [], []
 for record in records:
     print(f"Procesando registro {record}...")
@@ -77,12 +75,9 @@ min_len = min(len(X), len(y))
 X = X[:min_len]
 y = y[:min_len]
 
-# Balancear el conjunto de datos
-smote = SMOTE()
-X_smote, y_smote = smote.fit_resample(X, y)
 
 # Dividir datos en entrenamiento y prueba
-X_train, X_test, y_train, y_test = train_test_split(X_smote, y_smote, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 # Entrenar y evaluar el clasificador base
 clasificador = GaussianNB()
@@ -110,7 +105,7 @@ accuracy1=accuracy_score(y_test, y_pred)
 # Visualizar matriz de confusión
 conf_matrix = confusion_matrix(y_test, y_pred)
 plt.figure(figsize=(10,7))
-sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues',
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Greys',
             xticklabels=list(reindex_mapeo.values()), yticklabels=list(reindex_mapeo.values()))
 plt.xlabel('Predicted Labels')
 plt.ylabel('True Labels')
@@ -138,6 +133,8 @@ toolbox.register("mutate", tools.mutPolynomialBounded, low=0, up=9, eta=1.0, ind
 toolbox.register("select", tools.selTournament, tournsize=3)
 toolbox.register("evaluate", fitness)
 
+
+
 # Ejecutar el algoritmo genético
 population = toolbox.population(n=50)
 ngen = 40
@@ -146,6 +143,8 @@ mutpb = 0.2
 
 result, log = algorithms.eaSimple(population, toolbox, cxpb, mutpb, ngen, 
                                   stats=None, halloffame=None, verbose=True)
+
+
 
 # Obtener el mejor individuo y evaluar el modelo
 best_individual = tools.selBest(population, k=1)[0]
@@ -161,6 +160,13 @@ print("Classification Report:\n", classification_report(y_test, y_pred, zero_div
 print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
 
 accuracy2 = accuracy_score(y_test, y_pred)
-
+conf_matrix = confusion_matrix(y_test, y_pred)
+plt.figure(figsize=(10,7))
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Greys',
+            xticklabels=list(reindex_mapeo.values()), yticklabels=list(reindex_mapeo.values()))
+plt.xlabel('Predicted Labels')
+plt.ylabel('True Labels')
+plt.title('Confusion Matrix')
+plt.show()
 if accuracy2 > accuracy1:
     print(f'MEJORÓ EL RENDIMIENTO EN {(accuracy2 - accuracy1) * 100:.2f}%')
