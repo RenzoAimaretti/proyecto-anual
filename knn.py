@@ -1,8 +1,6 @@
-import multiprocessing
 import wfdb
 import neurokit2 as nk
 import numpy as np
-from sklearn.model_selection import cross_val_score
 from sklearn.neighbors import KNeighborsClassifier
 from deap import base, creator, tools, algorithms
 from sklearn.impute import SimpleImputer
@@ -10,10 +8,8 @@ from collections import Counter
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-from imblearn.over_sampling import SMOTE
 from sklearn.preprocessing import StandardScaler
 import seaborn as sns
-from multiprocessing import Pool
 
 # Mapeo de clases
 mapeo_clases = {

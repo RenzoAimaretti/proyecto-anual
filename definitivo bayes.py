@@ -1,16 +1,13 @@
-import multiprocessing
 import wfdb
 import neurokit2 as nk
 import numpy as np
-from sklearn.model_selection import cross_val_score, train_test_split
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 from deap import base, creator, tools, algorithms
 from sklearn.impute import SimpleImputer
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.naive_bayes import GaussianNB
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-from imblearn.over_sampling import SMOTE
 from sklearn.preprocessing import StandardScaler
 
 # Mapeo de clases
