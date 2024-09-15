@@ -81,27 +81,12 @@ y = y[:min_len]
 
 # Dividir datos en entrenamiento y prueba
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-# Contar elementos de cada clase en y_train
-unique_train, counts_train = np.unique(y_train, return_counts=True)
-print("Elementos de cada clase en y_train:")
-for label, count in zip(unique_train, counts_train):
-    print(f"Clase {label}: {count} elementos")
 
-# Contar elementos de cada clase en y_test
-unique_test, counts_test = np.unique(y_test, return_counts=True)
-print("Elementos de cada clase en y_test:")
-for label, count in zip(unique_test, counts_test):
-    print(f"Clase {label}: {count} elementos")
 # Entrenar y evaluar el clasificador base
 clasificador = GaussianNB()
 clasificador.fit(X_train, y_train)
-print(clasificador.classes_)
-print(clasificador.class_prior_)
 y_pred = clasificador.predict(X_test)
-unique_test, counts_test = np.unique(y_pred, return_counts=True)
-print("Elementos de cada clase en y_pred:")
-for label, count in zip(unique_test, counts_test):
-    print(f"Clase {label}: {count} elementos")
+
 # Mapeo para reporte
 reindex_mapeo = {
     0: 'Latido Normal',
@@ -171,8 +156,6 @@ print(f"Mejor hiperparámetro: var_smoothing={var_smoothing}")
 
 clasificador = GaussianNB(var_smoothing=var_smoothing)
 clasificador.fit(X_train, y_train)
-print(clasificador.classes_)
-print(clasificador.class_prior_)
 y_pred = clasificador.predict(X_test)
 
 print("Accuracy:", accuracy_score(y_test, y_pred))
