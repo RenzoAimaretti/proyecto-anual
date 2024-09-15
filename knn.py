@@ -83,9 +83,10 @@ def procesar_ecg(r, a):
     labels_agrupados = np.array([mapeo_clases[s] for s in simbolos if s in mapeo_clases])
 
     return features, labels_agrupados
-
-# Función para procesar cada registro en paralelo
-def procesar_registro_parallel(record):
+#procesar registros
+records = ['100', '101', '102', '103', '104', '105', '106', '107', '108', '109', '111', '112', '113', '114', '115', '116', '117', '118', '119', '121', '122', '123', '124', '200', '201', '202', '203', '205', '207', '208', '209', '210', '212', '213', '214', '215', '217', '219', '220', '221', '222', '223', '228', '230', '231', '232', '233', '234']
+X_total, y_total = [], []
+for record in records:
     print(f"Procesando registro {record}...")
     record_path = f'mit-bih-arrhythmia-database/{record}'
     annotation = f'mit-bih-arrhythmia-database/{record}'
@@ -95,150 +96,112 @@ def procesar_registro_parallel(record):
     features = features[:min_len]
     labels_agrupados = labels_agrupados[:min_len]
 
-    return features, labels_agrupados
+    X_total.append(features)
+    y_total.append(labels_agrupados)
 
-# Procesar registros en paralelo
-if __name__ == '__main__':
-    records = ['100', '101', '102', '103', '104', '105', '106', '107', '108', '109', '111', '112', '113', '114', '115', '116', '117', '118', '119', '121', '122', '123', '124', '200', '201', '202', '203', '205', '207', '208', '209', '210', '212', '213', '214', '215', '217', '219', '220', '221', '222', '223', '228', '230', '231', '232', '233', '234']
-    num_processes = multiprocessing.cpu_count()//2
-    with Pool(processes=num_processes) as pool:
-        results = pool.map(procesar_registro_parallel, records)
+X = np.vstack(X_total)
+y = np.hstack(y_total)
 
-    # Combinar los resultados
-    X_total, y_total = zip(*results)
-    X = np.vstack(X_total)
-    y = np.hstack(y_total)
+min_len = min(len(X), len(y))
+X = X[:min_len]
+y = y[:min_len]
 
-    print("Length of X:", len(X))
-    print("Length of y:", len(y))
-
-    min_len = min(len(X), len(y))
-    X = X[:min_len]
-    y = y[:min_len] 
-
-    # Dividir el conjunto de datos en entrenamiento y prueba
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    # Configurar el clasificador k-NN
-    k = 5  # Número de vecinos
+# Dividir el conjunto de datos en entrenamiento y prueba
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# Configurar el clasificador k-NN
+k = 5  # Número de vecinos
+clasificador = KNeighborsClassifier(n_neighbors=k)
+clasificador.fit(X_train, y_train)
+y_pred = clasificador.predict(X_test)
+# Reindexar etiquetas para reportes
+reindex_mapeo = {
+    0: 'Latido Normal',
+    1: 'Contracciones Prematuras',
+    2: 'Latido de Fusión',
+    3: 'Contracciones Auriculares',
+    4: 'Otros'
+}
+default_value = 'Otro'
+y_test_reindex = np.array([reindex_mapeo.get(label, default_value) for label in y_test])
+y_pred_reindex = np.array([reindex_mapeo.get(label, default_value) for label in y_pred])
+# Verificar las etiquetas reindexadas
+y_test_counts = Counter(y_test_reindex)
+y_pred_counts = Counter(y_pred_reindex)
+print("Counts in y_test:")
+for label, count in y_test_counts.items():
+    print(f"{label}: {count}")
+print("Counts in y_pred:")
+for label, count in y_pred_counts.items():
+    print(f"{label}: {count}")
+print("y_test_reindex:", y_test)
+print("y_pred_reindex:", y_pred)
+print("Accuracy:", accuracy_score(y_test, y_pred))
+print("Classification Report:\n", classification_report(y_test, y_pred, zero_division=0))
+print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
+accuracy1=accuracy_score(y_test, y_pred)
+conf_matrix = confusion_matrix(y_test, y_pred)
+plt.figure(figsize=(10,7))
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Greys',
+            xticklabels=list(reindex_mapeo.values()), yticklabels=list(reindex_mapeo.values()))
+plt.xlabel('Predicted Labels')
+plt.ylabel('True Labels')
+plt.title('Confusion Matrix')
+plt.show()
+# Definir función de fitness
+def fitness(individual):
+    k = int(individual[0])
+    k = max(1, min(k, 20))  # Asegurar que k esté en el rango [1, 20]
     clasificador = KNeighborsClassifier(n_neighbors=k)
     clasificador.fit(X_train, y_train)
     y_pred = clasificador.predict(X_test)
-
-    # Reindexar etiquetas para reportes
-    reindex_mapeo = {
-        0: 'Latido Normal',
-        1: 'Contracciones Prematuras',
-        2: 'Latido de Fusión',
-        3: 'Contracciones Auriculares',
-        4: 'Otros'
-    }
-    default_value = 'Otro'
-
-    y_test_reindex = np.array([reindex_mapeo.get(label, default_value) for label in y_test])
-    y_pred_reindex = np.array([reindex_mapeo.get(label, default_value) for label in y_pred])
-
-    # Verificar las etiquetas reindexadas
-    y_test_counts = Counter(y_test_reindex)
-    y_pred_counts = Counter(y_pred_reindex)
-
-    print("Counts in y_test:")
-    for label, count in y_test_counts.items():
-        print(f"{label}: {count}")
-
-    print("Counts in y_pred:")
-    for label, count in y_pred_counts.items():
-        print(f"{label}: {count}")
-
-    print("y_test_reindex:", y_test)
-    print("y_pred_reindex:", y_pred)
-
-    print("Accuracy:", accuracy_score(y_test, y_pred))
-    print("Classification Report:\n", classification_report(y_test, y_pred, zero_division=0))
-    print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
-    accuracy1=accuracy_score(y_test, y_pred)
-
-    conf_matrix = confusion_matrix(y_test, y_pred)
-    plt.figure(figsize=(10,7))
-    sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Greys',
-                xticklabels=list(reindex_mapeo.values()), yticklabels=list(reindex_mapeo.values()))
-    plt.xlabel('Predicted Labels')
-    plt.ylabel('True Labels')
-    plt.title('Confusion Matrix')
-    plt.show()
-
-    # Definir función de fitness
-    def fitness(individual):
-        print(individual)
-        k = int(individual[0])
-        k = max(1, min(k, 20))  # Asegurar que k esté en el rango [1, 20]
-        clasificador = KNeighborsClassifier(n_neighbors=k)
-        clasificador.fit(X_train, y_train)
-        y_pred = clasificador.predict(X_test)
-        accuracy = accuracy_score(y_test, y_pred)
-        return (accuracy,)
-
-    # Generar un número entero aleatorio
-    def random_int(low, up):
-        return np.random.randint(low, up + 1)
-
-    # Configurar el algoritmo genético
-    creator.create("FitnessMax", base.Fitness, weights=(1.0,))
-    creator.create("Individual", list, fitness=creator.FitnessMax)
-
-    toolbox = base.Toolbox()
-    toolbox.register("attr_int", random_int, low=1, up=20)
-    toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_int, n=1)
-    toolbox.register("population", tools.initRepeat, list, toolbox.individual)
-
-    # Usar cxOnePoint para cruce de enteros
-    toolbox.register("mate", tools.cxUniform, indpb=0.5)
-
-    # Mutación para enteros con límites
-    toolbox.register("mutate", tools.mutUniformInt, low=1, up=20, indpb=0.2)
-
-    # Selección por torneo
-    toolbox.register("select", tools.selTournament, tournsize=3)
-
-    # Evaluar el fitness
-    toolbox.register("evaluate", fitness)
-
-    # Ejecutar el algoritmo genético
-    population = toolbox.population(n=50)
-    ngen = 40
-    cxpb = 0.5
-    mutpb = 0.2
-
-    result, log = algorithms.eaSimple(population, toolbox, cxpb, mutpb, ngen, 
-                                      stats=None, halloffame=None, verbose=True)
-
-    # Obtener el mejor individuo
-    best_individual = tools.selBest(population, k=1)[0]
-    k_best = int(best_individual[0])
-    print(f"Mejor hiperparámetro: k={k_best}")
-
-    # Entrenar el modelo con el mejor hiperparámetro
-    clasificador = KNeighborsClassifier(n_neighbors=k_best)
-    clasificador.fit(X_train, y_train)
-
-    # Evaluar el modelo
-    y_pred = clasificador.predict(X_test)
-
-    # Generar el reporte
-    print("Accuracy:", accuracy_score(y_test, y_pred))
-    print("Classification Report:\n", classification_report(y_test, y_pred, zero_division=0))
-    print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
-
-    accuracy2 = accuracy_score(y_test, y_pred)
-
-    conf_matrix = confusion_matrix(y_test, y_pred)
-    plt.figure(figsize=(10,7))
-    sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Greys',
-                xticklabels=list(reindex_mapeo.values()), yticklabels=list(reindex_mapeo.values()))
-    plt.xlabel('Predicted Labels')
-    plt.ylabel('True Labels')
-    plt.title('Confusion Matrix')
-    plt.show()
-    if accuracy2 > accuracy1:
-        print(f'MEJORÓ EL RENDIMIENTO EN {(accuracy2 - accuracy1) * 100}%')
-
+    accuracy = accuracy_score(y_test, y_pred)
+    return (accuracy,)
+# Generar un número entero aleatorio
+def random_int(low, up):
+    return np.random.randint(low, up + 1)
+# Configurar el algoritmo genético
+creator.create("FitnessMax", base.Fitness, weights=(1.0,))
+creator.create("Individual", list, fitness=creator.FitnessMax)
+toolbox = base.Toolbox()
+toolbox.register("attr_int", random_int, low=1, up=20)
+toolbox.register("individual", tools.initRepeat, creator.Individual, toolbox.attr_int, n=1)
+toolbox.register("population", tools.initRepeat, list, toolbox.individual)
+# Usar cxOnePoint para cruce de enteros
+toolbox.register("mate", tools.cxUniform, indpb=0.5)
+# Mutación para enteros con límites
+toolbox.register("mutate", tools.mutUniformInt, low=1, up=20, indpb=0.2)
+# Selección por torneo
+toolbox.register("select", tools.selTournament, tournsize=3)
+# Evaluar el fitness
+toolbox.register("evaluate", fitness)
+# Ejecutar el algoritmo genético
+population = toolbox.population(n=15)
+ngen = 40
+cxpb = 0.5
+mutpb = 0.2
+result, log = algorithms.eaSimple(population, toolbox, cxpb, mutpb, ngen, 
+                                  stats=None, halloffame=None, verbose=True)
+# Obtener el mejor individuo
+best_individual = tools.selBest(population, k=1)[0]
+k_best = int(best_individual[0])
+print(f"Mejor hiperparámetro: k={k_best}")
+# Entrenar el modelo con el mejor hiperparámetro
+clasificador = KNeighborsClassifier(n_neighbors=k_best)
+clasificador.fit(X_train, y_train)
+# Evaluar el modelo
+y_pred = clasificador.predict(X_test)
+# Generar el reporte
+print("Accuracy:", accuracy_score(y_test, y_pred))
+print("Classification Report:\n", classification_report(y_test, y_pred, zero_division=0))
+print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
+accuracy2 = accuracy_score(y_test, y_pred)
+conf_matrix = confusion_matrix(y_test, y_pred)
+plt.figure(figsize=(10,7))
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Greys',
+            xticklabels=list(reindex_mapeo.values()), yticklabels=list(reindex_mapeo.values()))
+plt.xlabel('Predicted Labels')
+plt.ylabel('True Labels')
+plt.title('Confusion Matrix')
+plt.show()
+if accuracy2 > accuracy1:
+    print(f'MEJORÓ EL RENDIMIENTO EN {(accuracy2 - accuracy1) * 100}%')
