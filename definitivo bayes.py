@@ -1,3 +1,4 @@
+import os
 import wfdb
 import neurokit2 as nk
 import numpy as np
@@ -12,13 +13,37 @@ from sklearn.preprocessing import StandardScaler
 
 # Mapeo de clases
 mapeo_clases = {
-    'N': 0, 'V': 1, 'E': 1, 'F': 1, 'J': 1, 'A': 1, 'a': 1,
-    '/': 2, 'f': 2, 'L': 3, 'R': 3, 'S': 3, 'P': 3,
-    'Q': 4, 'e': 4, '!': 4, 'I': 4, 'i': 4, '+': 4, '~': 4,
-    '|': 4, 's': 4, 'T': 4, '*': 4, 'x': 4, '[': 4, ']': 4,
-    'p': 4, 'B': 4, 'b': 4,
+    'N': 0,  # Latido normal
+    'V': 1,  # Contracción ventricular prematura (PVC)
+    'E': 1,  # Latido de escape ventricular
+    'F': 1,  # Latido de fusión (Fusion of ventricular and normal beat)
+    'J': 1,  # Latido de escape nodal (Nodal (junctional) escape beat)
+    'A': 1,  # Contracción auricular prematura (Atrial premature beat)
+    'a': 1,  # Contracción auricular aberrante (Aberrated atrial premature beat)
+    '/': 2,  # Latido de fusión de latido normal y PVC (Fusion of paced and normal beat)
+    'f': 2,  # Latido de fusión de latido normal y latido aberrante (Fusion of paced and ventricular beat)
+    'L': 3,  # Latido de escape del nodo SA (Left bundle branch block beat)
+    'R': 3,  # Latido de escape ventricular (Right bundle branch block beat)
+    'S': 3,  # Contracción supraventricular prematura (Supraventricular premature beat)
+    'P': 3,  # Latido por marcapasos (Paced beat)
+    'Q': 4,  # Latido QRS aberrante (Unclassifiable beat)
+    'e': 4,  # Latido de escape ventricular retardado (Ventricular escape beat)
+    '!': 4,  # Latido ectópico nodal (Ventricular flutter wave)
+    'I': 4,  # Latido idioventricular (Ventricular flutter wave)
+    'i': 4,  # Latido de escape idioventricular (Ventricular flutter wave)
+    '+': 4,  # Ritmo cambiante (Rhythm change)
+    '~': 4,  # Cambio en la frecuencia cardiaca (Signal quality change)
+    '|': 4,  # Comienzo de segmento de segmento (Isolated QRS-like artifact)
+    's': 4,  # Latido sistólico (Systole)
+    'T': 4,  # Latido ventricular no capturado (T-wave peak)
+    '*': 4,  # Artefacto (Systole)
+    'x': 4,  # Latido aberrante (Waveform onset)
+    '[': 4,  # Comienzo de una pausa (P-wave peak)
+    ']': 4,  # Fin de una pausa (Waveform end)
+    'p': 4,  # Potencial del marcapasos (Non-conducted pacer spike)
+    'B': 4,  # Bloqueo de rama (Left bundle branch block)
+    'b': 4,  # Bloqueo de rama incompleto (Right bundle branch block)
 }
-
 def procesar_ecg(r, a):
     record = wfdb.rdrecord(r)
     annotation = wfdb.rdann(a, 'atr')
@@ -51,6 +76,18 @@ def procesar_ecg(r, a):
     labels_agrupados = np.array([mapeo_clases[s] for s in simbolos if s in mapeo_clases])
 
     return features, labels_agrupados
+
+
+# Verificar si la carpeta de la base de datos existe
+db_dir = 'mit-bih-arrhythmia-database'
+
+if not os.path.exists(db_dir):
+    print(f"La carpeta '{db_dir}' no existe. Descargando la base de datos...")
+    # Descargar la base de datos desde PhysioNet
+    wfdb.dl_database('mitdb', dl_dir=db_dir)
+else:
+    print(f"La carpeta '{db_dir}' ya existe.")
+
 
 # Procesar registros
 records = ['100', '101', '102', '103', '104', '105', '106', '107', '108', '109', '111', '112', '113', '114', '115', '116', '117', '118', '119', '121', '122', '123', '124', '200', '201', '202', '203', '205', '207', '208', '209', '210', '212', '213', '214', '215', '217', '219', '220', '221', '222', '223', '228', '230', '231', '232', '233', '234']
