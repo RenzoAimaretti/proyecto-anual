@@ -1,3 +1,4 @@
+import os
 import wfdb
 import neurokit2 as nk
 import numpy as np
@@ -79,6 +80,18 @@ def procesar_ecg(r, a):
     labels_agrupados = np.array([mapeo_clases[s] for s in simbolos if s in mapeo_clases])
 
     return features, labels_agrupados
+
+# Verificar si la carpeta de la base de datos existe
+db_dir = 'mit-bih-arrhythmia-database'
+
+if not os.path.exists(db_dir):
+    print(f"La carpeta '{db_dir}' no existe. Descargando la base de datos...")
+    # Descargar la base de datos desde PhysioNet
+    wfdb.dl_database('mitdb', dl_dir=db_dir)
+else:
+    print(f"La carpeta '{db_dir}' ya existe.")
+
+
 #procesar registros
 records = ['100', '101', '102', '103', '104', '105', '106', '107', '108', '109', '111', '112', '113', '114', '115', '116', '117', '118', '119', '121', '122', '123', '124', '200', '201', '202', '203', '205', '207', '208', '209', '210', '212', '213', '214', '215', '217', '219', '220', '221', '222', '223', '228', '230', '231', '232', '233', '234']
 X_total, y_total = [], []
@@ -120,17 +133,7 @@ reindex_mapeo = {
 default_value = 'Otro'
 y_test_reindex = np.array([reindex_mapeo.get(label, default_value) for label in y_test])
 y_pred_reindex = np.array([reindex_mapeo.get(label, default_value) for label in y_pred])
-# Verificar las etiquetas reindexadas
-y_test_counts = Counter(y_test_reindex)
-y_pred_counts = Counter(y_pred_reindex)
-print("Counts in y_test:")
-for label, count in y_test_counts.items():
-    print(f"{label}: {count}")
-print("Counts in y_pred:")
-for label, count in y_pred_counts.items():
-    print(f"{label}: {count}")
-print("y_test_reindex:", y_test)
-print("y_pred_reindex:", y_pred)
+
 print("Accuracy:", accuracy_score(y_test, y_pred))
 print("Classification Report:\n", classification_report(y_test, y_pred, zero_division=0))
 print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
